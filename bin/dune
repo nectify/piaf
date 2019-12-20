@@ -1,4 +1,5 @@
 (executable
  (public_name carl)
+ (package piaf-lwt-unix)
  (preprocess future_syntax)
  (libraries piaf cmdliner logs fmt logs.fmt fmt.tty camlzip ezgzip))

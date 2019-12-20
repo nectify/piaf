@@ -39,9 +39,10 @@ let make_error_handler real_handler type_ error =
   in
   real_handler (type_, error)
 
-module MakeHTTP2 (H2_client : H2_lwt.Client) :
+module MakeHTTP2 (H2_client : Http2_intf.Client) :
   Http_intf.HTTPCommon
     with type Client.t = H2_client.t
+     and type +'a Client.io = 'a H2_client.io
      and type Client.socket = H2_client.socket
      and type Body.Read.t = [ `read ] H2.Body.t
      and type Body.Write.t = [ `write ] H2.Body.t = struct
@@ -86,14 +87,15 @@ module MakeHTTP2 (H2_client : H2_lwt.Client) :
   end
 end
 
-module HTTP : Http_intf.HTTP2 = struct
+module Make_HTTP2c (H2_client : Http2_intf.Client) : Http_intf.HTTP2 = struct
   module HTTP_X :
     Http_intf.HTTPCommon
-      with type Client.t = H2_lwt_unix.Client.t
-       and type Client.socket = Lwt_unix.file_descr
-      with type Body.Read.t = [ `read ] H2.Body.t
+      with type Client.t = H2_client.t
+       and type +'a Client.io = 'a H2_client.io
+       and type Client.socket = H2_client.socket
+       and type Body.Read.t = [ `read ] H2.Body.t
        and type Body.Write.t = [ `write ] H2.Body.t =
-    MakeHTTP2 (H2_lwt_unix.Client)
+    MakeHTTP2 (H2_client)
 
   include (HTTP_X : module type of HTTP_X with module Client := HTTP_X.Client)
 
@@ -121,7 +123,7 @@ module HTTP : Http_intf.HTTP2 = struct
         in
         response_error_handler (`Stream, error)
       in
-      H2_lwt_unix.Client.create_h2c_connection
+      H2_client.create_h2c_connection
         ~http_request
         ~error_handler:(make_error_handler error_handler `Connection)
         (response_handler, response_error_handler)
@@ -129,4 +131,14 @@ module HTTP : Http_intf.HTTP2 = struct
   end
 end
 
-module HTTPS : Http_intf.HTTPS = MakeHTTP2 (H2_lwt_unix.Client.SSL)
+module HTTP : Http_intf.HTTP2 = Make_HTTP2c (struct
+  type +'a io = 'a Lwt.t
+
+  include H2_lwt_unix.Client.SSL
+end)
+
+module HTTPS : Http_intf.HTTPS = MakeHTTP2 (struct
+  type +'a io = 'a Lwt.t
+
+  include H2_lwt_unix.Client.SSL
+end)

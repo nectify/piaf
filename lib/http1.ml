@@ -29,9 +29,10 @@
  * POSSIBILITY OF SUCH DAMAGE.
  *---------------------------------------------------------------------------*)
 
-module MakeHTTP1 (Httpaf_client : Httpaf_lwt.Client) :
+module MakeHTTP1 (Httpaf_client : Http1_intf.Client) :
   Http_intf.HTTPCommon
     with type Client.t = Httpaf_client.t
+     and type +'a Client.io = 'a Httpaf_client.io
      and type Client.socket = Httpaf_client.socket
      and type Body.Read.t = [ `read ] Httpaf.Body.t
      and type Body.Write.t = [ `write ] Httpaf.Body.t = struct
@@ -91,6 +92,14 @@ module MakeHTTP1 (Httpaf_client : Httpaf_lwt.Client) :
   end
 end
 
-module HTTP : Http_intf.HTTP = MakeHTTP1 (Httpaf_lwt_unix.Client)
+module HTTP : Http_intf.HTTP = MakeHTTP1 (struct
+  type +'a io = 'a Lwt.t
 
-module HTTPS : Http_intf.HTTPS = MakeHTTP1 (Httpaf_lwt_unix.Client.SSL)
+  include Httpaf_lwt_unix.Client
+end)
+
+module HTTPS : Http_intf.HTTPS = MakeHTTP1 (struct
+  type +'a io = 'a Lwt.t
+
+  include Httpaf_lwt_unix.Client.SSL
+end)

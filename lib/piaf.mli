@@ -28,6 +28,7 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  *---------------------------------------------------------------------------*)
+module Http_intf = Http_intf
 
 module Method : module type of Method
 
@@ -288,6 +289,4 @@ module Client : sig
       -> (Response.t * Body.t, string) Lwt_result.t
     (** Use another request method. *)
   end
-
-  (* (Httpaf.Response.t * (string, 'a) result) Lwt.t *)
 end

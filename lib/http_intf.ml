@@ -78,6 +78,8 @@ module type Body = sig
 end
 
 module type Client = sig
+  type +'a io
+
   type socket
 
   type t
@@ -90,7 +92,7 @@ module type Client = sig
     :  ?config:Config.t
     -> error_handler:error_handler
     -> socket
-    -> t Lwt.t
+    -> t io
 
   type response_handler = Response.t -> read_body -> unit
 
@@ -139,7 +141,6 @@ module type HTTP2 = sig
       -> error_handler:error_handler
       -> response_handler * error_handler
       -> socket
-      -> (t, string) result Lwt.t
+      -> (t, string) result io
   end
 end
-with type Client.socket = Lwt_unix.file_descr

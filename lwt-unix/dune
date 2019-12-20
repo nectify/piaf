@@ -1,0 +1,6 @@
+(library
+ (name piaf_lwt_unix)
+ (public_name piaf-lwt-unix)
+ (preprocess future_syntax)
+ (libraries piaf httpaf h2 logs logs.lwt lwt lwt_ssl ssl httpaf-lwt-unix
+   h2-lwt-unix uri))
