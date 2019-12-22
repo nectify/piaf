@@ -38,3 +38,4 @@ module Response = Response
 module Scheme = Scheme
 module Status = H2.Status
 module Versions = Versions
+module Http2 = Http2

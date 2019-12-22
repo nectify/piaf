@@ -36,7 +36,7 @@ type t =
     status : Status.t
   ; headers : Headers.t
   ; version : Versions.HTTP.t
-  ; body_length : Body.length
+  ; body_length : Message.body_length
   }
 
 let of_http1 ~request_method response =
@@ -45,7 +45,8 @@ let of_http1 ~request_method response =
   ; headers = H2.Headers.of_rev_list (Httpaf.Headers.to_rev_list headers)
   ; version
   ; body_length =
-      (Httpaf.Response.body_length ~request_method response :> Body.length)
+      (Httpaf.Response.body_length ~request_method response
+        :> Message.body_length)
   }
 
 let of_h2 response =
@@ -57,7 +58,7 @@ let of_h2 response =
   { status
   ; headers
   ; version = { major = 2; minor = 0 }
-  ; body_length = (H2.Response.body_length response :> Body.length)
+  ; body_length = (H2.Response.body_length response :> Message.body_length)
   }
 
 let persistent_connection { version; headers; _ } =

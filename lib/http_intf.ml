@@ -96,8 +96,6 @@ module type Client = sig
 
   type response_handler = Response.t -> read_body -> unit
 
-  (* Removing this from the interface lets us delete a bunch of dup code.
-   * Same for create_connection. Think about something more high level. *)
   val request
     :  t
     -> Request.t
@@ -111,7 +109,7 @@ module type Client = sig
 end
 
 (* Common signature for sharing HTTP/1.X / HTTP/2 implementations. *)
-module type HTTPCommon = sig
+module type HTTP = sig
   module Body : Body
 
   module Client :
@@ -119,10 +117,6 @@ module type HTTPCommon = sig
       with type read_body := Body.Read.t
        and type write_body := Body.Write.t
 end
-
-module type HTTP = HTTPCommon with type Client.socket = Lwt_unix.file_descr
-
-module type HTTPS = HTTPCommon with type Client.socket = Lwt_ssl.socket
 
 (* Only needed for h2c upgrades (insecure HTTP/2) *)
 module type HTTP2 = sig

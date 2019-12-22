@@ -31,6 +31,14 @@
 
 module Version = Versions.HTTP
 
+type body_length =
+  [ `Fixed of Int64.t
+  | `Chunked
+  | `Error of [ `Bad_request | `Bad_gateway | `Internal_server_error ]
+  | `Unknown
+  | `Close_delimited
+  ]
+
 let persistent_connection version headers =
   match Headers.get headers "connection" with
   (* XXX: technically HTTP/2 HEADERS frames shouldn't have `connection` headers,

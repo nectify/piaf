@@ -2,5 +2,8 @@
  (name piaf)
  (public_name piaf)
  (preprocess future_syntax)
- (libraries httpaf h2 logs logs.lwt lwt lwt_ssl ssl httpaf-lwt-unix
-   h2-lwt-unix uri))
+ (modules body client config connection headers http_impl http_intf message
+   method request response scheme util versions platform_specific)
+ (libraries httpaf h2 logs logs.lwt lwt_ssl ssl uri)
+ (virtual_modules platform_specific)
+ (default_implementation piaf.lwt-unix))

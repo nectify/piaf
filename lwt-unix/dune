@@ -1,6 +1,8 @@
 (library
  (name piaf_lwt_unix)
- (public_name piaf-lwt-unix)
+ (public_name piaf.lwt-unix)
  (preprocess future_syntax)
- (libraries piaf httpaf h2 logs logs.lwt lwt lwt_ssl ssl httpaf-lwt-unix
-   h2-lwt-unix uri))
+ (implements piaf)
+ (private_modules monads io http1 http2 tls http_intfs)
+ (libraries lwt httpaf-lwt-unix h2-lwt-unix)
+ (variant lwt-unix))

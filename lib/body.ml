@@ -29,25 +29,17 @@
  * POSSIBILITY OF SUCH DAMAGE.
  *---------------------------------------------------------------------------*)
 
-open Monads
+open Platform_specific
 module IOVec = H2.IOVec
-
-type length =
-  [ `Fixed of Int64.t
-  | `Chunked
-  | `Error of [ `Bad_request | `Bad_gateway | `Internal_server_error ]
-  | `Unknown
-  | `Close_delimited
-  ]
 
 type stream =
   [ `Empty
   | `String of string
-  | `Stream of Bigstringaf.t IOVec.t Lwt_stream.t
+  | `Stream of Bigstringaf.t IOVec.t Io.Stream.t
   ]
 
 type t =
-  { length : length
+  { length : Message.body_length
   ; body : stream
   }
 
@@ -60,7 +52,7 @@ let of_stream ?(length = `Unknown) stream =
 
 let of_string_stream ?(length = `Unknown) stream =
   let stream =
-    Lwt_stream.map
+    Io.Stream.map
       (fun s ->
         let len = String.length s in
         { IOVec.buffer = Bigstringaf.of_string ~off:0 ~len s; off = 0; len })
@@ -75,20 +67,20 @@ let of_string s =
 let to_stream { body; _ } =
   match body with
   | `Empty ->
-    Lwt_stream.of_list []
+    Io.Stream.of_list []
   | `String s ->
-    Lwt_stream.of_list [ Bigstringaf.of_string ~off:0 ~len:(String.length s) s ]
+    Io.Stream.of_list [ Bigstringaf.of_string ~off:0 ~len:(String.length s) s ]
   | `Stream stream ->
-    Lwt_stream.map (fun { IOVec.buffer; _ } -> buffer) stream
+    Io.Stream.map (fun { IOVec.buffer; _ } -> buffer) stream
 
 let to_string { body; length } =
   match body with
   | `Empty ->
-    Lwt.return ""
+    Io.return ""
   | `String s ->
-    Lwt.return s
+    Io.return s
   | `Stream stream ->
-    let open Lwt.Syntax in
+    let open Io.Syntax in
     let len =
       match length with
       | `Fixed n ->
@@ -99,7 +91,7 @@ let to_string { body; length } =
     in
     let result_buffer = Buffer.create len in
     let+ () =
-      Lwt_stream.iter
+      Io.Stream.iter
         (fun { IOVec.buffer; off; len } ->
           let bytes = Bytes.create len in
           Bigstringaf.blit_to_bytes buffer ~src_off:off ~dst_off:0 ~len bytes;
@@ -111,24 +103,24 @@ let to_string { body; length } =
 let to_string_stream { body; _ } =
   match body with
   | `Empty ->
-    Lwt_stream.of_list []
+    Io.Stream.of_list []
   | `String s ->
-    Lwt_stream.of_list [ s ]
+    Io.Stream.of_list [ s ]
   | `Stream stream ->
-    Lwt_stream.map
+    Io.Stream.map
       (fun { IOVec.buffer; off; len } -> Bigstringaf.substring buffer ~off ~len)
       stream
 
 let drain { body; _ } =
   match body with
   | `Empty | `String _ ->
-    Lwt.return_unit
+    Io.return_unit
   | `Stream stream ->
-    Lwt_stream.junk_while (fun _ -> true) stream
+    Io.Stream.junk_while (fun _ -> true) stream
 
 let drain_available { body; _ } =
   match body with
   | `Empty | `String _ ->
-    Lwt.return_unit
+    Io.return_unit
   | `Stream stream ->
-    Lwt_stream.junk_old stream
+    Io.Stream.junk_old stream

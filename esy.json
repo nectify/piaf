@@ -24,8 +24,7 @@
     "@opam/fmt": "*",
     "@opam/conf-libev": "*",
     "@opam/ezgzip": "*",
-    "@opam/camlzip": "*",
-    "@opam/async_ssl": "*"
+    "@opam/camlzip": "*"
   },
   "devDependencies": {
     "@opam/merlin": "*",
@@ -41,8 +40,13 @@
     "@opam/h2-lwt": "anmonteiro/ocaml-h2:h2-lwt.opam#82be9d1",
     "@opam/h2-lwt-unix": "anmonteiro/ocaml-h2:h2-lwt-unix.opam#82be9d1",
     "@opam/conf-libssl": "esy-packages/esy-openssl#648930f",
-    "@opam/ssl": "savonet/ocaml-ssl:ssl.opam#fbffa9b",
-    "@opam/conf-libev": "esy-packages/libev:package.json#0b5eb66"
+    "@opam/ssl": "savonet/ocaml-ssl:ssl.opam#6b75fac",
+    "@opam/conf-libev": "esy-packages/libev:package.json#0b5eb66",
+    "@opam/dune": "ocaml/dune:dune.opam#73f7781",
+    "@opam/faraday": "inhabitedtype/faraday:faraday.opam#8d37f20",
+    "@opam/faraday-async": "inhabitedtype/faraday:faraday-async.opam#8d37f20",
+    "@opam/faraday-lwt": "inhabitedtype/faraday:faraday-lwt.opam#8d37f20",
+    "@opam/faraday-lwt-unix": "inhabitedtype/faraday:faraday-lwt-unix.opam#8d37f20"
   },
   "esy": {
     "build": [

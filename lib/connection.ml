@@ -29,26 +29,9 @@
  * POSSIBILITY OF SUCH DAMAGE.
  *---------------------------------------------------------------------------*)
 
-open Monads
+open Platform_specific
 open Util
 module Version = Httpaf.Version
-
-let resolve_host ~port hostname =
-  let open Lwt.Syntax in
-  let+ addresses =
-    Lwt_unix.getaddrinfo
-      hostname
-      (string_of_int port)
-      (* https://www.iana.org/assignments/protocol-numbers/protocol-numbers.xhtml *)
-      Unix.[ AI_CANONNAME; AI_PROTOCOL 6; AI_FAMILY PF_INET ]
-  in
-  match addresses with
-  | [] ->
-    let msg = Format.asprintf "Can't resolve hostname: %s" hostname in
-    Error msg
-  | xs ->
-    (* TODO: add resolved canonical hostname *)
-    Ok (List.map (fun { Unix.ai_addr; _ } -> ai_addr) xs)
 
 module Connection_info = struct
   (* This represents information that changes from connection to connection,
@@ -109,16 +92,16 @@ module Connection_info = struct
       80
 
   let of_uri uri =
-    let open Lwt_result.Syntax in
+    let open Io.Result.Syntax in
     let uri = Uri.canonicalize uri in
     match Uri.host uri with
     | Some host ->
-      let* scheme = Lwt.return (Scheme.of_uri uri) in
+      let* scheme = Io.return (Scheme.of_uri uri) in
       let port = infer_port ~scheme uri in
-      let+ addresses = resolve_host ~port host in
+      let+ addresses = Io.resolve_host ~port host in
       { scheme; uri; host; port; addresses }
     | None ->
-      Lwt_result.fail
+      Io.Result.fail
         (Format.asprintf "Missing host part for: %a" Uri.pp_hum uri)
 
   let pp_address fmt = function
@@ -135,12 +118,13 @@ end
 type t =
   | Conn :
       { impl :
-          (module Http_intf.HTTPCommon
+          (module HTTPCommon
              with type Client.t = 'a
+              and type Client.socket = 'socket
               and type Body.Read.t = 'b)
       ; handle : 'a
-      ; connection_error_received : ('b ok_ret, string) result Lwt.t
-      ; fd : Lwt_unix.file_descr
+      ; connection_error_received : ('b ok_ret, string) result Io.t
+      ; fd : Io.fd
       ; version : Version.t  (** HTTP version that this connection speaks *)
       }
       -> t

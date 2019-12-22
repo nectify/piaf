@@ -29,7 +29,7 @@
  * POSSIBILITY OF SUCH DAMAGE.
  *---------------------------------------------------------------------------*)
 
-open Monads
+open Platform_specific
 open Util
 module Connection_info = Connection.Connection_info
 module Version = Httpaf.Version
@@ -48,17 +48,20 @@ type t =
   ; config : Config.t
   }
 
-let create_http_connection ~config fd =
-  let (module Http), version =
+let create_http_connection
+    : config:Config.t -> Io.fd -> (Connection.t, string) result Io.t
+  =
+ fun ~config fd ->
+  let (module Http : HTTP), version =
     match
       ( config.Config.http2_prior_knowledge
       , config.max_http_version
       , config.h2c_upgrade )
     with
     | true, _, _ ->
-      (module Http2.HTTP : Http_intf.HTTP), Versions.HTTP.v2_0
+      (module HTTP2.HTTP), Versions.HTTP.v2_0
     | false, { Versions.HTTP.major = 2; _ }, true ->
-      (module Http1.HTTP : Http_intf.HTTP), Versions.HTTP.v1_1
+      (module HTTP1.HTTP), Versions.HTTP.v1_1
     | false, _, _ ->
       let version =
         if Versions.HTTP.(compare config.max_http_version v2_0) >= 0 then
@@ -66,7 +69,7 @@ let create_http_connection ~config fd =
         else
           config.max_http_version
       in
-      (module Http1.HTTP : Http_intf.HTTP), version
+      (module HTTP1.HTTP), version
   in
   Http_impl.create_connection (module Http) ~version ~fd fd
 
@@ -75,13 +78,13 @@ let create_https_connection ~config ~conn_info fd =
   let alpn_protocols =
     Versions.ALPN.protocols_of_version config.Config.max_http_version
   in
-  let open Lwt_result.Syntax in
-  let* ssl_client = Openssl.connect ~config ~hostname:host ~alpn_protocols fd in
+  let open Io.Result.Syntax in
+  let* ssl_client = TLS.connect ~config ~hostname:host ~alpn_protocols fd in
   match Lwt_ssl.ssl_socket ssl_client with
   | None ->
     failwith "handshake not established?"
   | Some ssl_socket ->
-    let (module Https), version =
+    let (module Https : HTTPS), version =
       match Ssl.get_negotiated_alpn_protocol ssl_socket with
       | None ->
         Log.warn (fun m ->
@@ -98,9 +101,9 @@ let create_https_connection ~config ~conn_info fd =
          * version configured. *)
         let impl, version =
           if config.http2_prior_knowledge then
-            (module Http2.HTTPS : Http_intf.HTTPS), Versions.HTTP.v2_0
+            (module HTTP2.HTTPS : HTTPS), Versions.HTTP.v2_0
           else
-            ( (module Http1.HTTPS : Http_intf.HTTPS)
+            ( (module HTTP1.HTTPS : HTTPS)
             , if Versions.HTTP.(compare config.max_http_version v2_0) >= 0 then
                 Versions.HTTP.v1_1
               else
@@ -112,11 +115,11 @@ let create_https_connection ~config ~conn_info fd =
         Log.info (fun m -> m "ALPN: server agreed to use %s" negotiated_proto);
         (match Versions.ALPN.of_string negotiated_proto with
         | Some HTTP_1_0 ->
-          (module Http1.HTTPS : Http_intf.HTTPS), Versions.HTTP.v1_0
+          (module HTTP1.HTTPS : HTTPS), Versions.HTTP.v1_0
         | Some HTTP_1_1 ->
-          (module Http1.HTTPS : Http_intf.HTTPS), Versions.HTTP.v1_1
+          (module HTTP1.HTTPS : HTTPS), Versions.HTTP.v1_1
         | Some HTTP_2 ->
-          (module Http2.HTTPS : Http_intf.HTTPS), Versions.HTTP.v2_0
+          (module HTTP2.HTTPS : HTTPS), Versions.HTTP.v2_0
         | None ->
           (* Can't really happen - would mean that TLS negotiated a
            * protocol that we didn't specify. *)
@@ -127,26 +130,20 @@ let create_https_connection ~config ~conn_info fd =
 let close_connection ~conn_info fd =
   Log.info (fun m ->
       m "Closing connection to %a" Connection_info.pp_hum conn_info);
-  Lwt_unix.close fd
+  Io.close fd
 
-let connect ?src ~config ~conn_info fd =
+let connect ?src:_ ~config ~conn_info fd =
   let { Connection_info.addresses; _ } = conn_info in
-  let open Lwt.Syntax in
-  let* () =
-    match src with
-    | None ->
-      Lwt.return_unit
-    | Some src_sa ->
-      Lwt_unix.bind fd src_sa
-  in
+  (* let* () = match src with | None -> Io.return_unit | Some src_sa ->
+     Lwt_unix.bind fd src_sa in *)
   (* TODO: try addresses in e.g. a round robin fashion? *)
   let address = List.hd addresses in
-  Lwt.catch
+  Io.catch
     (fun () ->
       Log.debug (fun m ->
           m "Trying connection to %a" Connection_info.pp_hum conn_info);
-      Lwt_unix.with_timeout config.Config.connect_timeout (fun () ->
-          Lwt_result.ok (Lwt_unix.connect fd address)))
+      Io.with_timeout config.Config.connect_timeout (fun () ->
+          Io.Result.ok (Io.connect fd address)))
     (function
       | Lwt_unix.Timeout ->
         let msg =
@@ -155,24 +152,24 @@ let connect ?src ~config ~conn_info fd =
             (config.connect_timeout *. 1000.)
         in
         Logs.err (fun m -> m "%s" msg);
-        Lwt_result.fail msg
+        Io.Result.fail msg
       | Unix.Unix_error (ECONNREFUSED, _, _) ->
-        Lwt_result.fail
+        Io.Result.fail
           (Format.asprintf
              "Failed connecting to %a: connection refused"
              Connection_info.pp_hum
              conn_info)
       | exn ->
-        Lwt_result.fail
+        Io.Result.fail
           (Format.asprintf
              "FIXME: unhandled connection error (%s)"
              (Printexc.to_string exn)))
 
 let make_impl ?src ~config ~conn_info fd =
-  let open Lwt_result.Syntax in
+  let open Io.Result.Syntax in
   let* () = connect ?src ~config ~conn_info fd in
   Log.info (fun m -> m "Connected to %a" Connection_info.pp_hum conn_info);
-  let open Lwt.Syntax in
+  let open Io.Syntax in
   let* impl =
     match conn_info.scheme with
     | Scheme.HTTP ->
@@ -182,21 +179,21 @@ let make_impl ?src ~config ~conn_info fd =
   in
   match impl with
   | Ok _ ->
-    Lwt.return impl
+    Io.return impl
   | Error _ ->
-    let open Lwt.Syntax in
+    let open Io.Syntax in
     let+ () = close_connection ~conn_info fd in
     impl
 
 let open_connection ~config conn_info =
-  let fd = Lwt_unix.socket Unix.PF_INET Unix.SOCK_STREAM 0 in
+  let fd = Io.socket Unix.PF_INET Unix.SOCK_STREAM 0 in
   if config.Config.tcp_nodelay then (
-    Lwt_unix.setsockopt fd Lwt_unix.TCP_NODELAY true;
+    Io.setsockopt fd TCP_NODELAY true;
     Logs.debug (fun m -> m "TCP_NODELAY set"));
   make_impl ~config ~conn_info fd
 
 let change_connection t conn_info =
-  let open Lwt_result.Syntax in
+  let open Io.Result.Syntax in
   let+ conn' = open_connection ~config:t.config conn_info in
   t.conn <- conn';
   t.conn_info <- conn_info
@@ -206,12 +203,12 @@ let drain_response_body_and_shutdown
     ~conn_info
     response_body
   =
-  let open Lwt.Syntax in
+  let open Io.Syntax in
   Log.debug (fun m -> m "Ignoring the response body");
   (* Junk what's available because we're going to close the connection.
    * This is to avoid leaking memory. We're not going to use this
    * response body so it doesn't need to stay around. *)
-  Lwt.async (fun () ->
+  Io.async (fun () ->
       let+ () = Body.drain_available response_body in
       Log.info (fun m ->
           m "Tearing down connection to %a" Connection_info.pp_hum conn_info);
@@ -223,8 +220,8 @@ let reuse_or_set_up_new_connection
     t)
     new_uri
   =
-  let open Lwt_result.Syntax in
-  let* new_scheme = Lwt.return (Scheme.of_uri new_uri) in
+  let open Io.Result.Syntax in
+  let* new_scheme = Io.return (Scheme.of_uri new_uri) in
   let new_conn_info =
     { conn_info with
       port = Connection_info.infer_port ~scheme:new_scheme new_uri
@@ -244,10 +241,10 @@ let reuse_or_set_up_new_connection
         m "Reusing the same connection as the host / port didn't change");
     (* URI could've changed *)
     t.conn_info <- new_conn_info;
-    Lwt_result.return true
+    Io.Result.return true
   | true, false ->
     let* new_addresses =
-      Connection.resolve_host ~port:new_conn_info.port new_conn_info.host
+      Io.resolve_host ~port:new_conn_info.port new_conn_info.host
     in
     (* Now we know the new address *)
     let new_conn_info = { new_conn_info with addresses = new_addresses } in
@@ -258,7 +255,7 @@ let reuse_or_set_up_new_connection
           m "Reusing the same connection as the remote address didn't change");
       (* URI could've changed *)
       t.conn_info <- new_conn_info;
-      Lwt_result.return true)
+      Io.Result.return true)
     else (* No way to avoid establishing a new connection. *)
       let+ () = change_connection t new_conn_info in
       false
@@ -278,16 +275,18 @@ type request_info =
   }
 
 let rec return_response
-    ({ conn = Connection.Conn ({ impl = (module Http); fd; _ } as conn_state)
-     ; conn_info
-     ; config
-     ; _
-     } as t)
-    ({ request; _ } as request_info)
-    ({ Response.status; headers; version; _ } as response)
-    response_body
+    :  t -> request_info -> Response.t -> Body.t
+    -> (Response.t * Body.t, string) result Io.t
   =
-  let open Lwt.Syntax in
+ fun ({ conn = Connection.Conn { impl = (module Http); fd; _ }
+      ; conn_info
+      ; config
+      ; _
+      } as t)
+     ({ request; _ } as request_info)
+     ({ Response.status; headers; version; _ } as response)
+     response_body ->
+  let open Io.Syntax in
   let { Connection_info.scheme; _ } = conn_info in
   (* A particular set of conditions must be true: we're receiving an HTTP
    * response, over HTTP/1.1, that has status 101, and we've asked to upgrade
@@ -307,18 +306,18 @@ let rec return_response
     | Some ("Upgrade" | "upgrade"), Some "h2c" ->
       (* TODO: this case needs to shutdown the HTTP/1.1 connection when it's
        * done using it. *)
-      let (module Http2) = (module Http2.HTTP : Http_intf.HTTP2) in
+      let (module Http2) = (module HTTP2.HTTP : HTTP2) in
       let* () = Body.drain response_body in
-      let open Lwt_result.Syntax in
+      let open Io.Result.Syntax in
       let* h2_conn, response, response_body' =
         Http_impl.create_h2c_connection (module Http2) ~http_request:request fd
       in
       t.conn <- h2_conn;
       return_response t request_info response response_body'
     | _ ->
-      Lwt_result.return (response, response_body))
+      Io.Result.return (response, response_body))
   | _ ->
-    Lwt_result.return (response, response_body)
+    Io.Result.return (response, response_body)
 
 let is_h2c_upgrade ~config ~version =
   match
@@ -363,7 +362,7 @@ let rec send_request_and_handle_response
     ~body
     ({ remaining_redirects; request; headers; meth; _ } as request_info)
   =
-  let open Lwt_result.Syntax in
+  let open Io.Result.Syntax in
   let* response, response_body = Http_impl.send_request conn ~body request in
   if t.persistent then
     t.persistent <- Response.persistent_connection response;
@@ -381,7 +380,7 @@ let rec send_request_and_handle_response
       Format.asprintf "Maximum (%d) redirects followed" config.max_redirects
     in
     Log.err (fun m -> m "%s" msg);
-    Lwt_result.fail msg
+    Io.Result.fail msg
   | true, true, _, Some location ->
     let { Connection_info.scheme; _ } = conn_info in
     let new_uri = Uri.parse_with_base_uri ~scheme ~uri location in
@@ -393,7 +392,7 @@ let rec send_request_and_handle_response
      * Otherwise, if we couldn't reuse the connection, drain the response body
      * and additionally shut down the old connection. *)
     if did_reuse then
-      Lwt.async (fun () -> Body.drain response_body)
+      Io.async (fun () -> Body.drain response_body)
     else
       drain_response_body_and_shutdown conn ~conn_info response_body;
     let target = Uri.path_and_query new_uri in
@@ -412,7 +411,7 @@ let rec send_request_and_handle_response
     return_response t request_info response response_body
 
 let create ?(config = Config.default) uri =
-  let open Lwt_result.Syntax in
+  let open Io.Result.Syntax in
   let* conn_info = Connection_info.of_uri uri in
   let+ conn = open_connection ~config conn_info in
   { conn; conn_info; persistent = true; uri; config }
@@ -421,7 +420,7 @@ let shutdown { conn = Connection.Conn { impl; handle; _ }; _ } =
   Http_impl.shutdown (module (val impl)) handle
 
 let call t ~meth ?(headers = []) ?(body = Body.empty) target =
-  let open Lwt_result.Syntax in
+  let open Io.Result.Syntax in
   (* Need to try to reconnect to the base host on every call, if redirects are
    * enabled, because the connection manager could have tried to follow a
    * redirect. *)
@@ -429,7 +428,7 @@ let call t ~meth ?(headers = []) ?(body = Body.empty) target =
     if t.config.follow_redirects then
       reuse_or_set_up_new_connection t t.uri
     else
-      Lwt_result.return true
+      Io.Result.return true
   in
   let request_info = make_request_info t ~meth ~headers ~body target in
   t.persistent <- Request.persistent_connection request_info.request;
@@ -454,7 +453,7 @@ module Oneshot = struct
   let call
       ?(config = Config.default) ?(headers = []) ?(body = Body.empty) ~meth uri
     =
-    let open Lwt_result.Syntax in
+    let open Io.Result.Syntax in
     let* t = create ~config uri in
     let target = Uri.path_and_query t.uri in
     let request_info = make_request_info t ~meth ~headers ~body target in

@@ -1,5 +1,5 @@
-(lang dune 1.8)
+(lang dune 2.0)
 
-(using fmt 1.1)
+(using library_variants 0.2)
 
 (name piaf)
