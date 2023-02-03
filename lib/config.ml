@@ -73,9 +73,6 @@ type t =
   ; body_buffer_size : int
         (** Buffer size used for request and response bodies. *)
   ; enable_http2_server_push : bool
-        (* ; max_concurrent_streams : int ; initial_window_size : int *)
-        (** TODO(anmonteiro): these are HTTP/2 specific and we're probably OK
-            with the defaults *)
   ; default_headers : (Headers.name * Headers.value) list
         (** Set default headers (on the client) to be sent on every request. *)
   ; flush_headers_immediately : bool
@@ -83,6 +80,9 @@ type t =
             immediately, or if Piaf should wait for the first body bytes to be
             written. Defaults to [false]. *)
   }
+(** TODO(anmonteiro): these are HTTP/2 specific and we're probably OK with the
+    defaults *)
+(* ; max_concurrent_streams : int ; initial_window_size : int *)
 
 let default =
   { follow_redirects = false
@@ -122,8 +122,8 @@ let to_http2_config
     then (
       Log.warn (fun m ->
           m
-            "Configured buffer size is smaller than the allowed by the HTTP/2 \
-             specification (%d). Defaulting to %d bytes."
+            "Configured buffer size (%d) is smaller than the allowed by the \
+             HTTP/2 specification. Defaulting to %d bytes."
             buffer_size
             h2_default_buffer_size);
       h2_default_buffer_size)
