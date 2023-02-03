@@ -79,6 +79,7 @@ type t =
         (** Specifies whether to flush message headers to the transport
             immediately, or if Piaf should wait for the first body bytes to be
             written. Defaults to [false]. *)
+  ; prefer_ip_version : [ `V4 | `V6 | `Both ]
   }
 (** TODO(anmonteiro): these are HTTP/2 specific and we're probably OK with the
     defaults *)
@@ -104,6 +105,7 @@ let default =
     enable_http2_server_push = false
   ; default_headers = []
   ; flush_headers_immediately = false
+  ; prefer_ip_version = `Both
   }
 
 let to_http1_config { body_buffer_size; buffer_size; _ } =

@@ -51,7 +51,37 @@ let resolve_host env ~config ~port hostname : (_, [> Error.client ]) result =
   | [] ->
     Error
       (`Connect_error (Format.asprintf "Can't resolve hostname: %s" hostname))
-  | xs -> Ok xs
+  | xs ->
+    (match config.Config.prefer_ip_version with
+    | `Both ->
+      let order_v4v6 = Eio.Net.Ipaddr.fold ~v4:(fun _ -> -1) ~v6:(fun _ -> 1) in
+      Ok
+        (* Sort IPv4 ahead of IPv6 for compatibility. *)
+        (List.sort
+           (fun a1 a2 ->
+             match a1, a2 with
+             | `Unix s1, `Unix s2 -> String.compare s1 s2
+             | `Tcp (ip1, _), `Tcp (ip2, _) ->
+               compare (order_v4v6 ip1) (order_v4v6 ip2)
+             | `Unix _, `Tcp _ -> 1
+             | `Tcp _, `Unix _ -> -1)
+           xs)
+    | `V4 ->
+      Ok
+        (List.filter
+           (function
+             | `Tcp (ip, _) ->
+               Eio.Net.Ipaddr.fold ~v4:(fun _ -> true) ~v6:(fun _ -> false) ip
+             | `Unix _ -> true)
+           xs)
+    | `V6 ->
+      Ok
+        (List.filter
+           (function
+             | `Tcp (ip, _) ->
+               Eio.Net.Ipaddr.fold ~v4:(fun _ -> false) ~v6:(fun _ -> true) ip
+             | `Unix _ -> true)
+           xs))
   | exception Eio.Time.Timeout ->
     Error
       (`Connect_error
@@ -95,8 +125,7 @@ module Info = struct
 
   let pp_address fmt = function
     | `Tcp (addr, port) ->
-      let addr = Unix.string_of_inet_addr (Obj.magic addr : Unix.inet_addr) in
-      Format.fprintf fmt "%s:%d" addr port
+      Format.fprintf fmt "%a:%d" Eio.Net.Ipaddr.pp addr port
     | `Unix addr -> Format.fprintf fmt "%s" addr
 
   let pp_hum fmt { addresses; host; _ } =
@@ -125,7 +154,6 @@ end
 let connect ~sw ~clock ~network ~config conn_info =
   let { Info.addresses; _ } = conn_info in
   (* TODO: try addresses in e.g. a round robin fashion? *)
-  (* TODO: config to prefer ipv4 / ipv6 *)
   let address = List.hd addresses in
   Log.debug (fun m -> m "Trying connection to %a" Info.pp_hum conn_info);
   match
