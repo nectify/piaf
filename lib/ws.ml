@@ -45,7 +45,7 @@ let upgrade_request ~headers ~scheme ~nonce target =
 
 module Descriptor : sig
   type t
-  type frame = Websocket.Opcode.t * string
+  type frame = Websocket.Opcode.t * bool * string
 
   val create : frames:frame Stream.t -> Wsd.t -> t
   val frames : t -> frame Stream.t
@@ -61,10 +61,10 @@ module Descriptor : sig
 end = struct
   type t =
     { wsd : Wsd.t
-    ; frames : (Websocket.Opcode.t * string) Stream.t
+    ; frames : (Websocket.Opcode.t * bool * string) Stream.t
     }
 
-  type frame = Websocket.Opcode.t * string
+  type frame = Websocket.Opcode.t * bool * string
 
   let create ~frames wsd = { wsd; frames }
   let frames t = t.frames
@@ -117,7 +117,7 @@ module Handler = struct
   let websocket_handler ~sw ~notify_wsd wsd =
     let frames, push_to_frames = Stream.create 256 in
     Promise.resolve notify_wsd (Descriptor.create ~frames wsd);
-    let frame ~opcode ~is_fin:_ ~len payload =
+    let frame ~opcode ~is_fin ~len payload =
       let len = Int64.of_int len in
       let { Body.stream; _ } =
         Body.Raw.to_stream
@@ -134,7 +134,7 @@ module Handler = struct
       in
       Fiber.fork ~sw (fun () ->
           let frame = Body.stream_to_string ~length:(`Fixed len) stream in
-          push_to_frames (Some (opcode, frame)))
+          push_to_frames (Some (opcode, is_fin, frame)))
     in
 
     let eof () =

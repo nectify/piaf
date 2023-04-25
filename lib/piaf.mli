@@ -435,7 +435,7 @@ module Ws : sig
   module Descriptor : sig
     type t
 
-    val frames : t -> (Websocketaf.Websocket.Opcode.t * string) Stream.t
+    val frames : t -> (Websocketaf.Websocket.Opcode.t * bool * string) Stream.t
     (** Stream of incoming websocket messages (frames) *)
 
     val send_stream : t -> Bigstringaf.t IOVec.t Stream.t -> unit
